@@ -408,21 +408,182 @@ if __name__ == "__main__":
     print("✓ learned positional encoding")
 
 # %% [markdown]
-# ## 7. Порівняння підходів
+# ## 7. Навчувані Fourier features
 #
-# | Кодування | Навчені параметри | Довжина поза train | Значення позиції |
+# Синусоїдальне кодування використовує частоти, які наперед задані формулою.
+# Можна зберегти ту саму ідею, але дозволити моделі **навчити частоти** разом
+# з іншими параметрами:
+#
+# $$FF(pos) = [\sin(pos \cdot f_0), \cos(pos \cdot f_0), \ldots,
+#               \sin(pos \cdot f_k), \cos(pos \cdot f_k)]$$
+#
+# Тут $f_0, \ldots, f_k$ — навчувані параметри. Позиційний вектор, як і раніше,
+# просто додається до embedding токена. Сам механізм attention змінювати не
+# потрібно.
+#
+# Спочатку передамо готові значення й дослідимо, як різні частоти змінюють
+# кодування. Після цього навчимо їх у маленькому експерименті з PyTorch.
+
+# %%
+
+def fourier_position_encoding(length, frequencies):
+    """Кодує позиції парами sin/cos із заданими навчуваними частотами."""
+
+    # Для кожної позиції pos і кожної частоти f додайте спочатку sin(pos * f),
+    # а потім cos(pos * f). Розмір результату: (length, 2 * len(frequencies)).
+    ...
+
+
+def test_fourier_position_encoding():
+    from math import cos, isclose, sin
+
+    frequencies = [1.0, 0.1]
+    encoded = fourier_position_encoding(3, frequencies)
+
+    assert len(encoded) == 3
+    assert all(len(row) == 4 for row in encoded)
+    assert encoded[0] == [0.0, 1.0, 0.0, 1.0]
+    assert isclose(encoded[1][0], sin(1.0), rel_tol=1e-9)
+    assert isclose(encoded[1][1], cos(1.0), rel_tol=1e-9)
+    assert isclose(encoded[1][2], sin(0.1), rel_tol=1e-9)
+    assert isclose(encoded[1][3], cos(0.1), rel_tol=1e-9)
+    assert encoded[1] != encoded[2]
+
+    assert fourier_position_encoding(2, []) == [[], []]
+
+    try:
+        fourier_position_encoding(-1, frequencies)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("length не може бути від'ємним")
+
+
+if __name__ == "__main__":
+    test_fourier_position_encoding()
+    print("✓ Fourier positional encoding")
+
+# Питання:
+# - Що зміниться, якщо всі частоти будуть дуже малими?
+# - Чому для кожної частоти використовуються і `sin`, і `cos`?
+# - Які параметри цієї функції оновлював би gradient descent?
+# - Чим цей підхід відрізняється від фіксованого синусоїдального кодування?
+
+# %% [markdown]
+# ## 8. Просте навчання позицій з PyTorch
+#
+# Досі ми лише обчислювали позиційні вектори. Тепер перевіримо, чи справді вони
+# несуть корисну інформацію. Створимо навмисно просту задачу:
+#
+# - маємо 8 однакових токенів із нульовими embedding-векторами;
+# - один спільний лінійний шар має визначити позицію кожного токена від 0 до 7;
+# - порівняємо відсутність кодування, learned embedding та Fourier features.
+#
+# Без позиційного кодування всі вісім входів однакові. Одна й та сама функція
+# не може дати для них вісім різних відповідей, тому найкраща accuracy — `1/8`.
+# Позиційне кодування робить входи різними, і задача стає розв'язуваною.
+#
+# Це не тренування мовної моделі, а контрольований експеримент. Тут PyTorch
+# зручний, бо автоматично обчислює градієнти та оновлює параметри.
+
+# %%
+
+def train_position_probe(encoding, length=8, d_model=8, steps=300):
+    """Навчає простий класифікатор позиції та повертає його accuracy."""
+    import torch
+
+    if encoding not in {"none", "learned", "fourier"}:
+        raise ValueError("encoding має бути none, learned або fourier")
+    if d_model % 2 != 0:
+        raise ValueError("d_model має бути парним")
+
+    torch.manual_seed(0)
+    positions = torch.arange(length)
+    classifier = torch.nn.Linear(d_model, length)
+
+    parameters = list(classifier.parameters())
+    if encoding == "learned":
+        position_encoder = torch.nn.Embedding(length, d_model)
+        parameters += list(position_encoder.parameters())
+    elif encoding == "fourier":
+        # nn.Parameter повідомляє PyTorch, що ці частоти треба навчати.
+        frequencies = torch.nn.Parameter(
+            torch.randn(d_model // 2) * 0.2
+        )
+        parameters.append(frequencies)
+
+    optimizer = torch.optim.Adam(parameters, lr=0.05)
+
+    for _ in range(steps):
+        if encoding == "none":
+            inputs = torch.zeros(length, d_model)
+        elif encoding == "learned":
+            inputs = position_encoder(positions)
+        else:
+            angles = positions.float()[:, None] * frequencies[None, :]
+            inputs = torch.stack(
+                (torch.sin(angles), torch.cos(angles)), dim=-1
+            ).flatten(start_dim=1)
+
+        logits = classifier(inputs)
+        loss = torch.nn.functional.cross_entropy(logits, positions)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    with torch.no_grad():
+        if encoding == "none":
+            inputs = torch.zeros(length, d_model)
+        elif encoding == "learned":
+            inputs = position_encoder(positions)
+        else:
+            angles = positions.float()[:, None] * frequencies[None, :]
+            inputs = torch.stack(
+                (torch.sin(angles), torch.cos(angles)), dim=-1
+            ).flatten(start_dim=1)
+        predictions = classifier(inputs).argmax(dim=1)
+        accuracy = (predictions == positions).float().mean()
+    return accuracy.item()
+
+
+def run_position_experiment():
+    without_position = train_position_probe("none")
+    learned = train_position_probe("learned")
+    fourier = train_position_probe("fourier")
+
+    print(f"Без позиційного кодування: {without_position:.1%}")
+    print(f"Learned embeddings:       {learned:.1%}")
+    print(f"Fourier features:         {fourier:.1%}")
+
+    assert without_position <= 1 / 8
+    assert learned > 0.95
+    assert fourier > 0.95
+
+
+if __name__ == "__main__":
+    run_position_experiment()
+
+# Питання:
+# - Чому збільшення кількості кроків не допоможе варіанту `none`?
+# - Які параметри навчаються у кожному з трьох експериментів?
+# - Чому цей результат показує необхідність позиційної інформації, але ще не
+#   доводить, який спосіб буде найкращим для мовної моделі?
+
+# %% [markdown]
+# ## 9. Порівняння підходів
+#
+# | Кодування | Навчені параметри | Позиції поза train | Компроміс |
 # |---|---:|---|---|
-# | синусоїдальне | 0 | можна обчислити | задане формулою |
-# | learned absolute | `max_length × d_model` | немає рядка | вивчає модель |
-#
-# Обидва варіанти є **абсолютними**: вони кажуть, що токен стоїть на позиції
-# 7. У сучасних моделях часто використовують відносні підходи або RoPE, які
-# допомагають attention працювати з відстанню між токенами. Це природний
-# наступний крок, але для нього спочатку треба розібрати сам механізм attention.
+# | синусоїдальне | 0 | можна обчислити | частоти задані вручну |
+# | learned absolute | `max_length × d_model` | немає рядка | гнучке, але має фіксовану таблицю |
+# | Fourier features | кілька частот | можна обчислити | компактне й адаптивне |
 #
 # Фінальні питання:
 # - Чи змінить синусоїдальне кодування перестановка двох токенів? Де саме?
 # - Чому learned-таблиця не може безпосередньо обробити позицію `max_length`?
+# - Чому Fourier features можна обчислити для позиції, якої не було під час
+#   тренування, навіть якщо самі частоти навчувані?
 # - Чому позиційне кодування потрібне навіть тоді, коли токенізатор зберіг
 #   правильний порядок токенів у списку?
 # - Які два компроміси ми бачили: у виборі розміру токена та у виборі способу
