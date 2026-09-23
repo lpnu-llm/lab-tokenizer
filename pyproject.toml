@@ -1,0 +1,8 @@
+[project]
+name = "lab-tokenizer"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "datasets>=4.0",
+    "tiktoken>=0.12",
+]
