@@ -7,8 +7,8 @@
 # 1. **токенізатор** ділить текст на токени та замінює їх ідентифікаторами;
 # 2. **позиційне кодування** додає інформацію про порядок токенів.
 #
-# У цій лабораторній ми пройдемо шлях від токенів-слів до BPE, а потім
-# побачимо, чому самих токенів недостатньо для трансформера. Усі алгоритми
+# У цій лабораторній ми пройдемо шлях від токенів-слів до BPE і WordPiece,
+# а потім побачимо, чому самих токенів недостатньо для трансформера. Усі алгоритми
 # реалізуємо з нуля, використовуючи лише стандартну бібліотеку Python.
 
 # %% [markdown]
@@ -34,7 +34,7 @@ def word_tokenize(text):
 
     # Підказка: модуль re підтримує Unicode. Апострофи ' та ’ можуть бути
     # частиною слова, але крапка або кома мають стати окремими токенами.
-    ...
+    raise NotImplementedError()
 
 
 def test_word_tokenize():
@@ -68,17 +68,17 @@ if __name__ == "__main__":
 
 # %%
 
-def build_word_vocab(texts):
+def build_word_vocab(texts) -> dict[str, int]:
     """Будує словник token -> id; звичайні токени сортує за абеткою."""
 
     # <pad> повинен мати id 0, а <unk> — id 1.
-    ...
+    raise NotImplementedError()
 
 
 def encode_words(text, vocab):
     """Перетворює текст на список id, використовуючи <unk> для OOV."""
 
-    ...
+    raise NotImplementedError()
 
 
 def test_word_vocab():
@@ -118,14 +118,14 @@ if __name__ == "__main__":
 def char_ngrams(word, n=3):
     """Повертає символьні n-грами слова з маркерами меж ^ та $."""
 
-    ...
+    raise NotImplementedError()
 
 
 def ngram_overlap(word_a, word_b, n=3):
     """Частка спільних n-грам за коефіцієнтом Жаккара."""
 
     # |A ∩ B| / |A ∪ B|. Для двох порожніх множин поверніть 1.0.
-    ...
+    raise NotImplementedError()
 
 
 def test_ngrams():
@@ -173,7 +173,7 @@ if __name__ == "__main__":
 def word_frequencies(texts):
     """Рахує частоти слів у корпусі, ігноруючи пунктуацію та числа."""
 
-    ...
+    raise NotImplementedError()
 
 
 def most_frequent_pair(vocabulary):
@@ -181,26 +181,27 @@ def most_frequent_pair(vocabulary):
 
     # vocabulary має вигляд {("м", "а", "м", "а", "</w>"): 2, ...}.
     # За однакової частоти виберіть лексикографічно найменшу пару.
-    ...
+    raise NotImplementedError()
 
 
 def merge_pair(symbols, pair):
     """Зливає всі неперекривні входження pair у послідовності symbols."""
 
-    ...
+    raise NotImplementedError()
 
 
 def train_bpe(texts, num_merges):
     """Навчає BPE та повертає список злиттів у порядку застосування."""
 
     # Навчання тут означає лише підрахунок частот, а не gradient descent.
-    ...
+    raise NotImplementedError()
+    
 
 
 def apply_bpe(word, merges):
     """Токенізує одне слово, послідовно застосовуючи вивчені злиття."""
 
-    ...
+    raise NotImplementedError()
 
 
 def test_bpe():
@@ -244,7 +245,7 @@ if __name__ == "__main__":
 def average_bpe_length(texts, merges):
     """Середня кількість BPE-токенів на слово у корпусі."""
 
-    ...
+    raise NotImplementedError()
 
 
 def test_average_bpe_length():
@@ -264,327 +265,97 @@ if __name__ == "__main__":
     print("✓ BPE reduces average sequence length")
 
 # Питання:
-# - Що ми купуємо ціною збільшення словника BPE?
+# - Що ми отримуємо ціною збільшення словника BPE?
 # - Чому коректніше порівнювати довжину на окремому test-корпусі?
 # - Звичайний BPE починається із символів. Як byte-level BPE уникає OOV навіть
 #   для емодзі, нового алфавіту або рідкісного Unicode-символу?
 
 # %% [markdown]
-# ## 4. Навіщо потрібна інформація про позицію
+# ## 4. WordPiece
 #
-# Після токенізації кожен id замінюється embedding-вектором. Але той самий
-# токен у різних місцях має той самий embedding. Ба більше, self-attention без
-# позиційної інформації не знає, який токен був першим, а який другим.
+# WordPiece навчається майже як BPE: починає із символів і поступово зливає
+# сусідні фрагменти. Значну частину логіки можна адаптувати з попереднього завдання.
 #
-# Порівняйте речення:
+# Відмінності: `##` позначає продовження слова; пари вибираються за оцінкою,
+# а не лише за частотою; під час токенізації шукають найдовший фрагмент зі словника.
 #
-# - `пес вкусив чоловіка`;
-# - `чоловік вкусив пса`.
-#
-# Набір слів майже той самий, але порядок змінює зміст. Тому до embedding
-# токена додають вектор його позиції:
-#
-# $$x_p = e_{token} + p_p$$
-#
-# Розмірності обох векторів мають збігатися. Додавання, а не конкатенація,
-# зберігає розмір `d_model`.
+# `score(a, b) = frequency(a, b) / (frequency(a) * frequency(b))`
 
 # %%
 
-def add_position(token_embeddings, position_embeddings):
-    """Поелементно додає позиційні вектори до embedding-векторів токенів."""
 
-    ...
+def wordpiece_symbols(word):
+    """Розбиває слово на початкові WordPiece-символи з префіксом ##."""
+
+    # Перший символ починає слово, решта — його продовження.
+    raise NotImplementedError()
 
 
-def test_add_position():
-    # Два однакові токени спочатку мають однакові представлення.
-    tokens = [[1.0, 2.0], [1.0, 2.0]]
-    positions = [[0.0, 0.0], [0.5, -0.5]]
-    result = add_position(tokens, positions)
-    assert result == [[1.0, 2.0], [1.5, 1.5]]
-    assert result[0] != result[1]
+def wordpiece_pair_scores(vocabulary):
+    """Обчислює WordPiece-score сусідніх пар у зваженому словнику."""
+
+    # Порахуйте зважені частоти фрагментів і сусідніх пар для формули вище.
+    raise NotImplementedError()
+
+
+def merge_wordpiece_pair(symbols, pair):
+    """Зливає пару, зберігаючи ##, якщо результат не починає слово."""
+
+    # Як у BPE, але `##` має позначати позицію, а не дублюватися при злитті.
+    raise NotImplementedError()
+
+
+def train_wordpiece(texts, vocab_size):
+    """Навчає WordPiece-словник заданого максимального розміру."""
+
+    # За однакового score вибираємо лексикографічно найменшу пару.
+    raise NotImplementedError()
+
+
+def apply_wordpiece(word, vocab, unk_token="[UNK]"):
+    """Токенізує слово жадібним longest-match-first алгоритмом BERT."""
+
+    # На кожній позиції шукайте найдовший фрагмент зі словника.
+    # Якщо розкласти слово повністю не вдається, поверніть `[UNK]`.
+    raise NotImplementedError()
+
+
+def test_wordpiece():
+    weighted_vocab = {
+        ("а", "##б"): 2,
+        ("а", "##в"): 1,
+        ("г", "##в"): 2,
+    }
+    scores = wordpiece_pair_scores(weighted_vocab)
+    assert scores[("а", "##б")] > scores[("а", "##в")]
+    assert merge_wordpiece_pair(("м", "##а", "##м", "##а"), ("м", "##а")) == (
+        "ма", "##м", "##а"
+    )
+
+    vocab = train_wordpiece(["мама мама мала тон"], 30)
+    assert "[UNK]" in vocab
+    assert apply_wordpiece("мама", vocab) == ["мама"]
+
+    # На відміну від BPE, WordPiece шукає найдовший фрагмент зі словника,
+    # а не повторює послідовність вивчених злиттів.
+    bert_vocab = {"[UNK]", "ток", "токен", "##ен", "##ізація"}
+    assert apply_wordpiece("токенізація", bert_vocab) == ["токен", "##ізація"]
+    assert apply_wordpiece("токенx", bert_vocab) == ["[UNK]"]
+    assert apply_wordpiece("", bert_vocab) == []
 
     try:
-        add_position([[1.0, 2.0]], [[1.0]])
+        train_wordpiece(["текст"], 0)
     except ValueError:
         pass
     else:
-        raise AssertionError("Розмірності embedding-векторів мають збігатися")
+        raise AssertionError("vocab_size має бути додатним")
 
 
 if __name__ == "__main__":
-    test_add_position()
-    print("✓ add_position")
-
-# %% [markdown]
-# ## 5. Синусоїдальне позиційне кодування
-#
-# В оригінальному Transformer позиційні вектори не навчалися. Для позиції
-# `pos` і парного `d_model` їх обчислювали так:
-#
-# $$PE(pos, 2i) = \sin\left(pos / 10000^{2i/d_{model}}\right)$$
-#
-# $$PE(pos, 2i+1) = \cos\left(pos / 10000^{2i/d_{model}}\right)$$
-#
-# Кожна пара координат коливається з іншою частотою: швидкі хвилі добре
-# розрізняють сусідні позиції, повільні — далекі. Кодування детерміноване, не
-# додає параметрів і його можна обчислити для довжини, якої не було в train.
-
-# %%
-
-def sinusoidal_encoding(length, d_model):
-    """Створює матрицю PE форми (length, d_model)."""
-
-    # Використайте sin і cos з модуля math. Вимагайте парний d_model.
-    ...
-
-
-def test_sinusoidal_encoding():
-    from math import isclose
-
-    pe = sinusoidal_encoding(4, 6)
-    assert len(pe) == 4
-    assert all(len(row) == 6 for row in pe)
-    assert pe[0] == [0.0, 1.0, 0.0, 1.0, 0.0, 1.0]
-    assert isclose(pe[1][0], 0.8414709848, rel_tol=1e-9)
-    assert isclose(pe[1][1], 0.5403023059, rel_tol=1e-9)
-    assert pe[1] != pe[2]
-
-    try:
-        sinusoidal_encoding(3, 5)
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("Для цієї реалізації d_model має бути парним")
-
-
-if __name__ == "__main__":
-    test_sinusoidal_encoding()
-    print("✓ sinusoidal encoding")
-
-# %% [markdown]
-# ## 6. Навчені позиційні embedding-и
-#
-# Інший підхід — створити таблицю `max_length × d_model`. Рядок з індексом
-# `pos` є звичайним параметром моделі й оновлюється під час тренування разом з
-# іншими вагами. У цій лабораторній ми не тренуємо модель: функція лише вибере
-# потрібні рядки з уже заданої таблиці.
-#
-# Перевага — модель сама знаходить корисне кодування позицій. Недоліки —
-# додаткові параметри та фіксована максимальна довжина. Для позиції поза
-# таблицею embedding просто не існує.
-
-# %%
-
-def learned_position_encoding(length, table):
-    """Повертає перші length рядків навченої позиційної таблиці."""
-
-    # Поверніть копії рядків, щоб результат не змінював саму таблицю.
-    ...
-
-
-def test_learned_position_encoding():
-    table = [
-        [0.1, 0.2, 0.3],
-        [0.4, 0.5, 0.6],
-        [0.7, 0.8, 0.9],
-    ]
-    result = learned_position_encoding(2, table)
-    assert result == [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
-    result[0][0] = 999
-    assert table[0][0] == 0.1
-
-    try:
-        learned_position_encoding(4, table)
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("length перевищує максимальну довжину таблиці")
-
-
-if __name__ == "__main__":
-    test_learned_position_encoding()
-    print("✓ learned positional encoding")
-
-# %% [markdown]
-# ## 7. Навчувані Fourier features
-#
-# Синусоїдальне кодування використовує частоти, які наперед задані формулою.
-# Можна зберегти ту саму ідею, але дозволити моделі **навчити частоти** разом
-# з іншими параметрами:
-#
-# $$FF(pos) = [\sin(pos \cdot f_0), \cos(pos \cdot f_0), \ldots,
-#               \sin(pos \cdot f_k), \cos(pos \cdot f_k)]$$
-#
-# Тут $f_0, \ldots, f_k$ — навчувані параметри. Позиційний вектор, як і раніше,
-# просто додається до embedding токена. Сам механізм attention змінювати не
-# потрібно.
-#
-# Спочатку передамо готові значення й дослідимо, як різні частоти змінюють
-# кодування. Після цього навчимо їх у маленькому експерименті з PyTorch.
-
-# %%
-
-def fourier_position_encoding(length, frequencies):
-    """Кодує позиції парами sin/cos із заданими навчуваними частотами."""
-
-    # Для кожної позиції pos і кожної частоти f додайте спочатку sin(pos * f),
-    # а потім cos(pos * f). Розмір результату: (length, 2 * len(frequencies)).
-    ...
-
-
-def test_fourier_position_encoding():
-    from math import cos, isclose, sin
-
-    frequencies = [1.0, 0.1]
-    encoded = fourier_position_encoding(3, frequencies)
-
-    assert len(encoded) == 3
-    assert all(len(row) == 4 for row in encoded)
-    assert encoded[0] == [0.0, 1.0, 0.0, 1.0]
-    assert isclose(encoded[1][0], sin(1.0), rel_tol=1e-9)
-    assert isclose(encoded[1][1], cos(1.0), rel_tol=1e-9)
-    assert isclose(encoded[1][2], sin(0.1), rel_tol=1e-9)
-    assert isclose(encoded[1][3], cos(0.1), rel_tol=1e-9)
-    assert encoded[1] != encoded[2]
-
-    assert fourier_position_encoding(2, []) == [[], []]
-
-    try:
-        fourier_position_encoding(-1, frequencies)
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("length не може бути від'ємним")
-
-
-if __name__ == "__main__":
-    test_fourier_position_encoding()
-    print("✓ Fourier positional encoding")
+    test_wordpiece()
+    print("✓ WordPiece")
 
 # Питання:
-# - Що зміниться, якщо всі частоти будуть дуже малими?
-# - Чому для кожної частоти використовуються і `sin`, і `cos`?
-# - Які параметри цієї функції оновлював би gradient descent?
-# - Чим цей підхід відрізняється від фіксованого синусоїдального кодування?
-
-# %% [markdown]
-# ## 8. Просте навчання позицій з PyTorch
-#
-# Досі ми лише обчислювали позиційні вектори. Тепер перевіримо, чи справді вони
-# несуть корисну інформацію. Створимо навмисно просту задачу:
-#
-# - маємо 8 однакових токенів із нульовими embedding-векторами;
-# - один спільний лінійний шар має визначити позицію кожного токена від 0 до 7;
-# - порівняємо відсутність кодування, learned embedding та Fourier features.
-#
-# Без позиційного кодування всі вісім входів однакові. Одна й та сама функція
-# не може дати для них вісім різних відповідей, тому найкраща accuracy — `1/8`.
-# Позиційне кодування робить входи різними, і задача стає розв'язуваною.
-#
-# Це не тренування мовної моделі, а контрольований експеримент. Тут PyTorch
-# зручний, бо автоматично обчислює градієнти та оновлює параметри.
-
-# %%
-
-def train_position_probe(encoding, length=8, d_model=8, steps=300):
-    """Навчає простий класифікатор позиції та повертає його accuracy."""
-    import torch
-
-    if encoding not in {"none", "learned", "fourier"}:
-        raise ValueError("encoding має бути none, learned або fourier")
-    if d_model % 2 != 0:
-        raise ValueError("d_model має бути парним")
-
-    torch.manual_seed(0)
-    positions = torch.arange(length)
-    classifier = torch.nn.Linear(d_model, length)
-
-    parameters = list(classifier.parameters())
-    if encoding == "learned":
-        position_encoder = torch.nn.Embedding(length, d_model)
-        parameters += list(position_encoder.parameters())
-    elif encoding == "fourier":
-        # nn.Parameter повідомляє PyTorch, що ці частоти треба навчати.
-        frequencies = torch.nn.Parameter(
-            torch.randn(d_model // 2) * 0.2
-        )
-        parameters.append(frequencies)
-
-    optimizer = torch.optim.Adam(parameters, lr=0.05)
-
-    for _ in range(steps):
-        if encoding == "none":
-            inputs = torch.zeros(length, d_model)
-        elif encoding == "learned":
-            inputs = position_encoder(positions)
-        else:
-            angles = positions.float()[:, None] * frequencies[None, :]
-            inputs = torch.stack(
-                (torch.sin(angles), torch.cos(angles)), dim=-1
-            ).flatten(start_dim=1)
-
-        logits = classifier(inputs)
-        loss = torch.nn.functional.cross_entropy(logits, positions)
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-    with torch.no_grad():
-        if encoding == "none":
-            inputs = torch.zeros(length, d_model)
-        elif encoding == "learned":
-            inputs = position_encoder(positions)
-        else:
-            angles = positions.float()[:, None] * frequencies[None, :]
-            inputs = torch.stack(
-                (torch.sin(angles), torch.cos(angles)), dim=-1
-            ).flatten(start_dim=1)
-        predictions = classifier(inputs).argmax(dim=1)
-        accuracy = (predictions == positions).float().mean()
-    return accuracy.item()
-
-
-def run_position_experiment():
-    without_position = train_position_probe("none")
-    learned = train_position_probe("learned")
-    fourier = train_position_probe("fourier")
-
-    print(f"Без позиційного кодування: {without_position:.1%}")
-    print(f"Learned embeddings:       {learned:.1%}")
-    print(f"Fourier features:         {fourier:.1%}")
-
-    assert without_position <= 1 / 8
-    assert learned > 0.95
-    assert fourier > 0.95
-
-
-if __name__ == "__main__":
-    run_position_experiment()
-
-# Питання:
-# - Чому збільшення кількості кроків не допоможе варіанту `none`?
-# - Які параметри навчаються у кожному з трьох експериментів?
-# - Чому цей результат показує необхідність позиційної інформації, але ще не
-#   доводить, який спосіб буде найкращим для мовної моделі?
-
-# %% [markdown]
-# ## 9. Порівняння підходів
-#
-# | Кодування | Навчені параметри | Позиції поза train | Компроміс |
-# |---|---:|---|---|
-# | синусоїдальне | 0 | можна обчислити | частоти задані вручну |
-# | learned absolute | `max_length × d_model` | немає рядка | гнучке, але має фіксовану таблицю |
-# | Fourier features | кілька частот | можна обчислити | компактне й адаптивне |
-#
-# Фінальні питання:
-# - Чи змінить синусоїдальне кодування перестановка двох токенів? Де саме?
-# - Чому learned-таблиця не може безпосередньо обробити позицію `max_length`?
-# - Чому Fourier features можна обчислити для позиції, якої не було під час
-#   тренування, навіть якщо самі частоти навчувані?
-# - Чому позиційне кодування потрібне навіть тоді, коли токенізатор зберіг
-#   правильний порядок токенів у списку?
-# - Які два компроміси ми бачили: у виборі розміру токена та у виборі способу
-#   кодування позиції?
+# - Чому `##` потрібен, щоб відрізняти початок слова від його продовження?
+# - Чим WordPiece-score відрізняється від вибору найчастішої пари у BPE?
+# - Чому BERT повертає `[UNK]` для цілого слова, якщо не знаходить один фрагмент?
