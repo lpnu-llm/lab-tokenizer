@@ -562,39 +562,40 @@ if __name__ == "__main__":
 
 # %%
 
-tokenizers_to_compare = {}
+if __name__ == "__main__":
+    tokenizers_to_compare = {}
 
-for vocab_size, merges in bpe_models.items():
-    tokenizers_to_compare[f"BPE-{vocab_size}"] = (
-        lambda text, merges=merges: apply_bpe_to_text(text, merges)
+    for vocab_size, merges in bpe_models.items():
+        tokenizers_to_compare[f"BPE-{vocab_size}"] = (
+            lambda text, merges=merges: apply_bpe_to_text(text, merges)
+        )
+
+    for vocab_size, vocab in wordpiece_models.items():
+        tokenizers_to_compare[f"WordPiece-{vocab_size}"] = (
+            lambda text, vocab=vocab: apply_wordpiece_to_text(text, vocab)
+        )
+
+    for name, encoding in gpt_encodings.items():
+        tokenizers_to_compare[name] = encoding.encode
+
+
+    def fertility_table(tokenizers, corpora):
+        """Обчислює вкладений dict tokenizer -> language -> fertility."""
+        raise NotImplementedError()
+
+
+    results = fertility_table(tokenizers_to_compare, flores)
+
+    header = f"{'tokenizer':<24}" + "".join(
+        f"{language:>14}" for language in flores
     )
-
-for vocab_size, vocab in wordpiece_models.items():
-    tokenizers_to_compare[f"WordPiece-{vocab_size}"] = (
-        lambda text, vocab=vocab: apply_wordpiece_to_text(text, vocab)
-    )
-
-for name, encoding in gpt_encodings.items():
-    tokenizers_to_compare[name] = encoding.encode
-
-
-def fertility_table(tokenizers, corpora):
-    """Обчислює вкладений dict tokenizer -> language -> fertility."""
-    raise NotImplementedError()
-
-
-results = fertility_table(tokenizers_to_compare, flores)
-
-header = f"{'tokenizer':<24}" + "".join(
-    f"{language:>14}" for language in flores
-)
-print(header)
-print("-" * len(header))
-for tokenizer_name, language_values in results.items():
-    row = f"{tokenizer_name:<24}" + "".join(
-        f"{language_values[language]:14.3f}" for language in flores
-    )
-    print(row)
+    print(header)
+    print("-" * len(header))
+    for tokenizer_name, language_values in results.items():
+        row = f"{tokenizer_name:<24}" + "".join(
+            f"{language_values[language]:14.3f}" for language in flores
+        )
+        print(row)
 
 # Питання:
 # - Для якої мови GPT-2 має найбільшу fertility? Чому?
@@ -626,7 +627,8 @@ def compare_mixed_cases(texts, tokenizers):
     raise NotImplementedError()
 
 
-compare_mixed_cases(MIXED_CASES, tokenizers_to_compare)
+if __name__ == "__main__":
+    compare_mixed_cases(MIXED_CASES, tokenizers_to_compare)
 
 # Фінальні питання:
 # - Які символи або фрагменти стабільно створюють найбільше токенів?
